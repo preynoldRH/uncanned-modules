@@ -1,0 +1,72 @@
+#!/bin/bash
+# Format the data disk and export it over NFS + HTTP :8080. Not product config.
+set -euo pipefail
+
+exec > >(tee -a /var/log/staging-bootstrap.log) 2>&1
+echo "=== Staging bootstrap started at $(date -Is) ==="
+
+VPC1='${vpc1_cidr}'
+VPC2='${vpc2_cidr}'
+HOSTNAME='${hostname}'
+
+hostnamectl set-hostname "$HOSTNAME"
+sleep 30
+
+resolve_data() {
+  if [[ -b /dev/nvme1n1 ]]; then echo /dev/nvme1n1
+  elif [[ -b /dev/xvdf ]]; then echo /dev/xvdf
+  elif [[ -b /dev/sdf ]]; then echo /dev/sdf
+  fi
+}
+
+DATA_DEV=$(resolve_data)
+echo "Data device: $${DATA_DEV:-none}"
+
+if [[ -n "$${DATA_DEV:-}" && -b "$DATA_DEV" ]]; then
+  if ! blkid "$DATA_DEV" &>/dev/null; then
+    mkfs.xfs -f "$DATA_DEV"
+  fi
+  mkdir -p /exports
+  uuid=$(blkid -o value -s UUID "$DATA_DEV")
+  grep -q "/exports" /etc/fstab || echo "UUID=$uuid /exports xfs defaults,nofail 0 2" >> /etc/fstab
+  mount /exports || mount -a
+fi
+
+mkdir -p /exports/content /exports/installer /exports/manifests
+chmod 777 /exports /exports/content /exports/installer /exports/manifests
+
+dnf -y install nfs-utils firewalld || true
+systemctl enable --now firewalld || true
+firewall-cmd --permanent --add-service=nfs || true
+firewall-cmd --permanent --add-service=rpc-bind || true
+firewall-cmd --permanent --add-service=mountd || true
+firewall-cmd --permanent --add-port=8080/tcp || true
+firewall-cmd --reload || true
+
+cat > /etc/exports <<EOF
+/exports $${VPC1}(rw,sync,no_root_squash,no_subtree_check)
+/exports $${VPC2}(rw,sync,no_root_squash,no_subtree_check)
+EOF
+
+systemctl enable --now nfs-server
+exportfs -ra
+
+cat > /etc/systemd/system/staging-http.service <<'UNIT'
+[Unit]
+Description=Demo staging HTTP file server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/exports
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now staging-http.service
+
+echo "ready $(date -Is)" > /exports/STAGING_READY
+echo "=== Staging NFS+HTTP ready at $(date -Is) ==="

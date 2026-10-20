@@ -1,0 +1,12 @@
+#!/bin/bash
+hostnamectl set-hostname '${hostname}'
+PRIVATE_IP=$(hostname -I | awk '{print $1}')
+grep -q '${hostname}' /etc/hosts || echo "$PRIVATE_IP ${hostname}" >> /etc/hosts
+%{ if extra_hosts != "" ~}
+cat >> /etc/hosts <<'HOSTS'
+${extra_hosts}
+HOSTS
+%{ endif ~}
+%{ if motd != "" ~}
+echo '${motd}' > /etc/motd
+%{ endif ~}
