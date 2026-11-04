@@ -7,7 +7,7 @@ Shared **machines-only** Terraform for custom Red Hat demos. These modules turn 
 This is not the catalog. It is a kit. You still need a blank AWS Open Environment, RHEL 9 Access2 AMIs, Red Hat entitlements, and the product installer for the **version** you want to show.
 
 1. Clone the three repos **next to each other** (see below).
-2. Open the lab for a **runnable** recipe — today that is `satellite-soe` (`uncanned-satellite`) or `aap-hub` (`uncanned-aap`). Check `ontology/composition.yaml` for `status: runnable`.
+2. Open the lab for a **runnable** recipe — today that is `satellite-soe-connected` or `satellite-soe-disconnected-twin` (`uncanned-satellite`), or `aap-hub` (`uncanned-aap`). Check `ontology/composition.yaml` for `status: runnable`.
 3. Copy that lab’s `terraform.tfvars.example`, make an SSH key, `terraform apply`, then install from **that lab’s README**. After apply the boxes are empty on purpose.
 4. A recipe with `status: proposed` is a catalog card only. Adding YAML does not create Terraform or an installer.
 
@@ -19,7 +19,7 @@ Labs that use this kit (clone next to this repo):
 
 | Lab | What it shows |
 |-----|----------------|
-| [`uncanned-satellite`](https://github.com/preynoldRH/uncanned-satellite) | Dual-VPC Satellite + staging sneakernet + IdM |
+| [`uncanned-satellite`](https://github.com/preynoldRH/uncanned-satellite) | Connected Satellite SOE + IdM; optional air-gap twin + staging |
 | [`uncanned-aap`](https://github.com/preynoldRH/uncanned-aap) | Connected VPC + AAP controller, hub, and a client |
 
 ```bash

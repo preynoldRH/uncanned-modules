@@ -82,9 +82,10 @@ labs:
   - id: uncanned-satellite
     status: runnable
     path: ../../uncanned-satellite
-    proves: Dual-VPC Satellite + sneakernet + IdM + RPM/Kickstart content views
+    proves: Connected Satellite SOE with IdM; optional second VPC + staging for disconnected twin
     products: [satellite, idm, rhel]
     day1_in: README.md
+    recipes: [satellite-soe-connected, satellite-soe-disconnected-twin]
   - id: uncanned-aap
     status: runnable
     path: ../../uncanned-aap
@@ -101,15 +102,32 @@ labs:
 # Recipes — pick one, then add integrations as extra VMs or extra labs
 # ---------------------------------------------------------------------------
 recipes:
-  - id: satellite-soe
+  - id: satellite-soe-connected
     status: runnable
-    title: Connected + air-gapped Satellite with IdM
+    title: Connected Satellite SOE with IdM
     labs: [uncanned-satellite]
     products: [rhel, satellite, idm]
-    integrations: [satellite-consumes-idm-ldap, rhel-registers-to-satellite, satellite-disconnected-via-staging]
-    day0: Dual VPC, bastion, staging NFS, IdM EC2, two Satellite EC2s (RHEL 9), unregistered workloads
-    day1: ipa-server-install; satellite-installer both sides; manifest; repos; CV; LDAP so soeuser logs in
+    integrations: [satellite-consumes-idm-ldap, rhel-registers-to-satellite]
+    day0: One connected VPC, bastion, IdM EC2, one Satellite EC2 (RHEL 9), a few unregistered RHEL workloads
+    day1: ipa-server-install; satellite-installer; manifest; repos; CV; LDAP so soeuser logs in
+    live_path: Register a workload; log in as soeuser; show content view — no air-gap in this story
+    not: [second VPC, staging sneakernet, second Satellite]
+    pairs_with: [satellite-plus-aap]
+
+  - id: satellite-soe-disconnected-twin
+    status: runnable
+    title: Connected Satellite + disconnected twin via sneakernet
+    labs: [uncanned-satellite]
+    products: [rhel, satellite, idm]
+    integrations:
+      - satellite-consumes-idm-ldap
+      - rhel-registers-to-satellite
+      - satellite-disconnected-via-staging
+    builds_on: satellite-soe-connected
+    day0: Dual VPC, bastion, staging NFS, IdM EC2, connected Satellite + air-gap Satellite (RHEL 9), workloads both sides
+    day1: ipa-server-install; satellite-installer both sides; manifest; repos; CV; LDAP; content-export / content-import via staging
     live_path: Register a workload; log in as soeuser; talk sneakernet — do not sync repos in the room
+    not: [S3 as sneakernet]
 
   - id: aap-hub
     status: runnable
@@ -125,6 +143,7 @@ recipes:
     status: proposed
     title: Satellite content + AAP automation (two labs, one story)
     labs: [uncanned-satellite, uncanned-aap]
+    builds_on: satellite-soe-connected
     missing: Joint README for inventory plugin / callback. Both labs exist; the wiring is not written down.
     products: [rhel, satellite, idm, aap]
     integrations:
@@ -134,6 +153,7 @@ recipes:
       - aap-jobs-patch-via-satellite
     rule: Do not merge the two product installers. Compose machines in each lab; wire inventory in README (day1/day2).
     day2: Satellite dynamic inventory, callback, patch job template
+    note: Start from the connected SOE, not the disconnected twin, unless the meeting is air-gap automation.
 
   - id: rhel-image-mode
     status: proposed
@@ -185,6 +205,9 @@ recipes:
 when_to_use:
   catalog: Normal product walkthrough, version in the catalog is close enough, need it this afternoon
   uncanned: Their wiring, their version, identity that is not admin, hub they control, air-gap, or two sites
+  satellite-soe-connected: SOE story — IdM user, content views, register hosts. One Satellite. No air-gap required.
+  satellite-soe-disconnected-twin: Two sites / air-gap is the point. Connected Sat + staging USB + air-gap Sat.
+  satellite-plus-aap: They want patch/automation off Satellite inventory — compose connected SOE + aap-hub
   sno: Full OpenShift APIs, no node HA, tiny site
   compact-3: HA in three boxes, control plane also runs workloads
   sno_then_worker: Start on one box, add a worker later — do not live-migrate pods as a product feature; use MTC if already on OpenShift

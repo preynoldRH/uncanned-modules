@@ -95,7 +95,7 @@ products:
     status: current
     provides: [os_content, kickstart]
     consumes: [identity_ldap]
-    typical_demo_role: SOE — repos, content views, register hosts, disconnected twin
+    typical_demo_role: SOE — repos, content views, register hosts; optional disconnected twin via staging
     host:
       form: ec2_rhel
       rhel_majors: [9]          # Satellite Server / Capsule: latest RHEL 9 x86_64 (6.17+)
