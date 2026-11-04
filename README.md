@@ -2,6 +2,17 @@
 
 Shared **machines-only** Terraform for custom Red Hat demos. These modules turn computers on. They do not install Satellite, AAP, IdM, or OpenShift.
 
+## If you are new here
+
+This is not the catalog. It is a kit. You still need a blank AWS Open Environment, RHEL 9 Access2 AMIs, Red Hat entitlements, and the product installer for the **version** you want to show.
+
+1. Clone the three repos **next to each other** (see below).
+2. Open the lab for a **runnable** recipe — today that is `satellite-soe` (`uncanned-satellite`) or `aap-hub` (`uncanned-aap`). Check `ontology/composition.yaml` for `status: runnable`.
+3. Copy that lab’s `terraform.tfvars.example`, make an SSH key, `terraform apply`, then install from **that lab’s README**. After apply the boxes are empty on purpose.
+4. A recipe with `status: proposed` is a catalog card only. Adding YAML does not create Terraform or an installer.
+
+Give the assistant the lab folder plus this repo (the ontology lives here). `AGENTS.md` in each repo is how it should change the files.
+
 Repo: [preynoldRH/uncanned-modules](https://github.com/preynoldRH/uncanned-modules)
 
 Labs that use this kit (clone next to this repo):
@@ -58,6 +69,10 @@ module "network" {
 ```
 
 Pin `ref` to a tag in real use. Do not use git submodules.
+
+## Ontology
+
+`ontology/` is the Red Hat portfolio graph for AI assistants that build Uncanned labs: products, integrations, and which git repo owns the installer. Humans still install from each lab’s README. Terraform still only turns computers on.
 
 ## Rules
 

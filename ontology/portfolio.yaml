@@ -1,0 +1,758 @@
+# Red Hat portfolio ontology for Uncanned labs.
+# Agents: treat ids as stable. Humans: README in each lab is still the installer.
+# This is not a SKU list and not a substitute for access.redhat.com.
+
+id: redhat.uncanned.portfolio
+version: "0.1.0"
+updated: "2026-11-03"
+
+vocab:
+  # On product nodes that need a server OS:
+  #   host.form: always ec2_rhel for Uncanned (composition forbids AWS managed services as product hosts)
+  #   host.rhel_majors: majors allowed for the product server/capsule itself (not managed clients)
+  #   host.not_yet: majors that exist but are not supported for this product yet
+  #   install_model: preferred / also / deprecated day1 paths (containerized, rpm, operator, …)
+  capabilities:
+    - os_content          # RPM, DNF, subscriptions
+    - kickstart           # provisioning trees
+    - identity_ldap
+    - identity_kerberos
+    - identity_oidc
+    - automation          # job runs, inventories
+    - gitops
+    - container_registry
+    - cluster             # Kubernetes/OpenShift APIs
+    - cluster_fleet       # many clusters
+    - policy
+    - security_scan
+    - persistent_storage
+    - messaging
+    - api_mgmt
+    - ai_ml
+    - vm_on_k8s
+    - app_runtime
+    - sneakernet          # NFS/HTTP USB analog
+    - image_build
+    - edge
+
+# ===========================================================================
+# Products
+# ===========================================================================
+products:
+
+  # --- OS / host ----------------------------------------------------------
+  - id: rhel
+    name: Red Hat Enterprise Linux
+    aliases: [RHEL, Enterprise Linux]
+    family: os
+    status: current
+    provides: [os_content]
+    consumes: []
+    typical_demo_role: The box everything else runs on; or the unregistered workload
+    host:
+      form: ec2_rhel
+      rhel_majors: [9]          # kit default (rhel_ami = RHEL 9 Access2 BYOL)
+      also_available: [8, 10]   # pin a different AMI only when a product/host rule needs it
+    day0: rhel_vm from uncanned-modules (Access2 BYOL AMI) — EC2, not a managed service
+    day1: subscription-manager register; repos from CDN or Satellite
+    uncanned_lab: [uncanned-satellite, uncanned-aap]
+    notes: Cloud AMIs often use RHUI; set rhsm.manage_repos=1 before enabling Satellite/CDN repos.
+
+  - id: rhel-image-mode
+    name: RHEL Image Mode (bootc)
+    aliases: [bootc, image mode]
+    family: os
+    status: current
+    provides: [image_build]
+    consumes: [container_registry]
+    typical_demo_role: Boot an image they built, not a screenshot of a golden image
+    day0: Builder VM + registry
+    day1: bootc / image builder; push to Quay or local registry
+
+  - id: rhcos
+    name: Red Hat Enterprise Linux CoreOS
+    aliases: [RHCOS, CoreOS]
+    family: os
+    status: current
+    provides: [os_content]
+    consumes: [cluster]
+    notes: OpenShift node OS. Not a Satellite-managed RHEL content view in the usual SOE sense.
+
+  - id: microshift
+    name: MicroShift (Red Hat Device Edge)
+    aliases: [Device Edge, RDE]
+    family: edge
+    status: current
+    provides: [cluster, edge]
+    consumes: [rhel]
+    typical_demo_role: Kubernetes APIs on a small device, not full SNO
+
+  # --- Content / SOE ------------------------------------------------------
+  - id: satellite
+    name: Red Hat Satellite
+    aliases: [Satellite, Foreman, Katello, Capsule]
+    family: management
+    status: current
+    provides: [os_content, kickstart]
+    consumes: [identity_ldap]
+    typical_demo_role: SOE — repos, content views, register hosts, disconnected twin
+    host:
+      form: ec2_rhel
+      rhel_majors: [9]          # Satellite Server / Capsule: latest RHEL 9 x86_64 (6.17+)
+      not_yet: [10]             # RHEL 10 not supported for Satellite/Capsule itself yet
+      not: [8]                  # RHEL 8 removed as Satellite/Capsule OS in 6.17
+      managed_hosts_ok: [8, 9, 10]  # clients Satellite manages — different from host.rhel_majors
+      arch: x86_64
+    day0: Extra pulp + pgsql disks; optional air-gap VPC; staging NFS — EC2 RHEL 9 only
+    day1: satellite-installer; manifest; repository-set enable; content-view; LDAP auth source
+    day2: Host groups, compute resource, image builder, capsules
+    uncanned_lab: [uncanned-satellite]
+    notes: >
+      Users from IdM do not appear until LDAP auth source exists and they log in once.
+      Do not log into Satellite as IdM admin (second admin account).
+      Kickstart is a separate content type from RPM.
+      Satellite 6.17+ runs on RHEL 9 only; it can still manage RHEL 8/9/10 hosts.
+
+  - id: satellite-capsule
+    name: Satellite Capsule
+    aliases: [Capsule]
+    family: management
+    status: current
+    provides: [os_content, kickstart]
+    consumes: [satellite]
+    typical_demo_role: Remote site pulling from primary Satellite
+    host:
+      form: ec2_rhel
+      rhel_majors: [9]
+      not_yet: [10]
+      not: [8]
+      arch: x86_64
+    day1: capsule-certs-generate; satellite-installer --scenario capsule
+    uncanned_lab: []
+    notes: Air-gapped Satellite in uncanned-satellite is a second full Satellite, not a Capsule. Same RHEL 9 host rule as Satellite Server.
+
+  - id: insights
+    name: Red Hat Insights
+    aliases: [Hybrid Cloud Console, console.redhat.com, Advisor]
+    family: management
+    status: current
+    provides: [security_scan, policy]
+    consumes: [rhel, satellite, openshift]
+    typical_demo_role: Advisor/compliance/vulnerability on hosts registered through Satellite or rhc
+    day1: rhc connect or insights-client; Satellite inventory upload
+    notes: Needs a path to console.redhat.com unless you are showing the disconnected story (then skip or mock).
+
+  - id: rhsm
+    name: Red Hat Subscription Management
+    aliases: [RHSM, SCA, Simple Content Access, Customer Portal]
+    family: management
+    status: current
+    provides: [os_content]
+    consumes: []
+    notes: Manifests for Satellite come from console.redhat.com or the Portal. Not a VM.
+
+  - id: image-builder
+    name: Insights Image Builder / osbuild
+    aliases: [osbuild, composer, Image Builder]
+    family: management
+    status: current
+    provides: [image_build]
+    consumes: [os_content, container_registry]
+    typical_demo_role: Build a RHEL image or kickstart-adjacent artifact they boot in the room
+    day2: Often Satellite + Image Builder; do not stuff into Terraform
+
+  # --- Identity -----------------------------------------------------------
+  - id: idm
+    name: Red Hat Identity Management
+    aliases: [IdM, FreeIPA, IPA]
+    family: identity
+    status: current
+    provides: [identity_ldap, identity_kerberos]
+    consumes: [rhel]
+    typical_demo_role: Regular user (soeuser) vs admin; HBAC later
+    host:
+      form: ec2_rhel
+      rhel_majors: [9]   # uncanned-satellite uses RHEL 9 AppStream IdM; confirm before adding 10
+      not_yet: [10]
+      arch: x86_64
+    day0: One EC2 RHEL VM, stable FQDN, preserve_hostname
+    day1: ipa-server-install (skip reverse DNS on AWS); create soeuser not in admins
+    uncanned_lab: [uncanned-satellite]
+    notes: In RHEL AppStream. Satellite integration in this lab is LDAP bind, not Kerberos SSO.
+
+  - id: rhds
+    name: Red Hat Directory Server
+    aliases: [RHDS, 389 Directory Server]
+    family: identity
+    status: current
+    provides: [identity_ldap]
+    notes: Use when they already have DS and do not want full IdM/Kerberos.
+
+  - id: keycloak
+    name: Red Hat build of Keycloak
+    aliases: [RH-SSO, RHBK, SSO]
+    family: identity
+    status: current
+    provides: [identity_oidc]
+    consumes: [identity_ldap]
+    typical_demo_role: OIDC for OpenShift or AAP; can federate IdM/LDAP
+    notes: Former Red Hat SSO. Prefer current "build of Keycloak" name.
+
+  # --- Automation ---------------------------------------------------------
+  - id: aap
+    name: Ansible Automation Platform
+    aliases: [AAP, Tower, AWX, Controller, Automation Hub, EDA]
+    family: automation
+    status: current
+    provides: [automation]
+    consumes: [identity_ldap, identity_oidc, container_registry]
+    typical_demo_role: Controller + private hub + a client
+    host:
+      form: ec2_rhel
+      rhel_majors: [9, 10]   # containerized installer; confirm z-stream in lab README
+      not: [8]               # new 2.6+ installs are not RHEL 8
+      arch: x86_64
+    install_model:
+      preferred: containerized   # Podman / rootless on RHEL — default for new uncanned labs
+      also: [operator_on_openshift]  # integration aap-runs-on-openshift; different story
+      deprecated: rpm            # last RPM in 2.6 (RHEL 9 only); gone in 2.7 — do not start new labs on RPM
+    day0: Controller EC2, hub EC2, optional EEA — RHEL hosts, not managed AWS services
+    day1: Containerized AAP installer for the version they run — pin in README
+    day2: Inventories, job templates, EEs, EDA
+    uncanned_lab: [uncanned-aap]
+    components: [controller, private-automation-hub, execution-environments, event-driven-ansible]
+    notes: >
+      New uncanned AAP labs use the containerized installer on EC2 RHEL.
+      Do not default to the RPM installer. Operator-on-OpenShift is a separate recipe/story.
+
+  - id: ansible-lightspeed
+    name: Ansible Lightspeed
+    family: automation
+    status: current
+    consumes: [aap]
+    notes: Optional; not required for an uncanned AAP lab.
+
+  # --- OpenShift platform -------------------------------------------------
+  - id: openshift
+    name: Red Hat OpenShift Container Platform
+    aliases: [OCP, OpenShift, ROSA, ARO, OSD, SNO, compact]
+    family: openshift
+    status: current
+    provides: [cluster]
+    consumes: [os_content, container_registry, persistent_storage]
+    typical_demo_role: Cluster they run this quarter — SNO, compact-3, or full
+    host:
+      form: ec2_rhel_or_rhcos   # self-managed nodes you turn on; not ROSA/ARO/OSD as the Uncanned day0
+      note: Uncanned OpenShift is machines + installer, not a managed OpenShift service tour
+    day0: Bare metal or EC2 VMs per topology; never hide openshift-install in cloud-init; never substitute ROSA for day0
+    day1: openshift-install / assisted installer; pin z-stream in README
+    topologies:
+      sno: {nodes: 1, ha: false, use: "Full APIs, tiny site"}
+      compact-3: {nodes: 3, ha: true, use: "Control plane also runs workloads"}
+      standard: {nodes: "3 cp + N workers", ha: true, use: "Datacenter"}
+    uncanned_lab: []
+
+  - id: oke
+    name: OpenShift Kubernetes Engine
+    family: openshift
+    status: current
+    provides: [cluster]
+    notes: Smaller SKU; same installer family. Do not demo OperatorHub-only stories on OKE without checking entitlements.
+
+  - id: opp
+    name: OpenShift Platform Plus
+    aliases: [OPP]
+    family: openshift
+    status: bundle
+    includes: [openshift, acs, acm, quay]
+    notes: Commercial bundle, not a fourth installer.
+
+  - id: openshift-virtualization
+    name: OpenShift Virtualization
+    aliases: [CNV, KubeVirt, OSPV]
+    family: openshift
+    status: current
+    provides: [vm_on_k8s]
+    consumes: [cluster, persistent_storage]
+    notes: Use when the meeting is VMs on OpenShift. Uncanned Satellite is not this.
+
+  - id: odf
+    name: OpenShift Data Foundation
+    aliases: [ODF, OCS, Ceph]
+    family: storage
+    status: current
+    provides: [persistent_storage]
+    consumes: [cluster]
+    typical_demo_role: Storage on compact-3 (hyperconverged)
+
+  - id: lvm-storage
+    name: Logical Volume Manager Storage
+    aliases: [LVMS]
+    family: storage
+    status: current
+    provides: [persistent_storage]
+    consumes: [cluster]
+    typical_demo_role: SNO / small cluster local storage instead of full ODF
+
+  # --- OpenShift fleet / security / registry ------------------------------
+  - id: acm
+    name: Red Hat Advanced Cluster Management
+    aliases: [ACM, RHACM]
+    family: openshift
+    status: current
+    provides: [cluster_fleet, policy, gitops]
+    consumes: [cluster, automation]
+    typical_demo_role: Hub cluster managing spoke OpenShift (and policies)
+
+  - id: acs
+    name: Red Hat Advanced Cluster Security
+    aliases: [ACS, StackRox]
+    family: security
+    status: current
+    provides: [security_scan, policy]
+    consumes: [cluster]
+    typical_demo_role: Runtime + build-time scan on OpenShift, not a RHEL Insights clone
+
+  - id: quay
+    name: Red Hat Quay
+    aliases: [Quay, Quay.io]
+    family: openshift
+    status: current
+    provides: [container_registry]
+    consumes: [identity_oidc]
+    typical_demo_role: Registry they control (disconnected or org catalog)
+
+  - id: oc-pipelines
+    name: OpenShift Pipelines
+    aliases: [Tekton]
+    family: openshift
+    status: current
+    provides: [gitops]
+    consumes: [cluster, container_registry]
+
+  - id: oc-gitops
+    name: OpenShift GitOps
+    aliases: [Argo CD, GitOps]
+    family: openshift
+    status: current
+    provides: [gitops]
+    consumes: [cluster]
+
+  - id: service-mesh
+    name: OpenShift Service Mesh
+    aliases: [Istio, OSSM]
+    family: openshift
+    status: current
+    consumes: [cluster]
+
+  - id: serverless
+    name: OpenShift Serverless
+    aliases: [Knative]
+    family: openshift
+    status: current
+    consumes: [cluster]
+
+  - id: rhoai
+    name: Red Hat OpenShift AI
+    aliases: [RHOAI, RHODS, OpenShift Data Science]
+    family: ai_ml
+    status: current
+    provides: [ai_ml]
+    consumes: [cluster, persistent_storage, container_registry]
+
+  - id: openshift-lightspeed
+    name: OpenShift Lightspeed
+    family: openshift
+    status: current
+    consumes: [cluster]
+
+  # --- Migration toolkits (do not conflate) -------------------------------
+  - id: mta
+    name: Migration Toolkit for Applications
+    aliases: [MTA, Konveyor, RHAMT]
+    family: migration
+    status: current
+    typical_demo_role: Assess/analyze app source for containerization on OpenShift
+    notes: Application code. Not VMs. Not OpenShift namespace move.
+
+  - id: mtc
+    name: Migration Toolkit for Containers
+    aliases: [MTC, Crane]
+    family: migration
+    status: current
+    typical_demo_role: Move already-containerized namespaces between OpenShift clusters
+    notes: Includes PV data. Not MTV.
+
+  - id: mtv
+    name: Migration Toolkit for Virtualization
+    aliases: [MTV, virt-v2v]
+    family: migration
+    status: current
+    typical_demo_role: VMware/OVA/RHV VMs onto OpenShift Virtualization
+    notes: Wrong tool if the meeting is "migrate the workload into a container."
+
+  # --- App foundations / middleware --------------------------------------
+  - id: eap
+    name: JBoss Enterprise Application Platform
+    aliases: [EAP, JBoss, WildFly]
+    family: app_foundations
+    status: current
+    provides: [app_runtime]
+    consumes: [cluster, os_content]
+    typical_demo_role: Replatform a Java app (MTA often sits in front)
+
+  - id: jws
+    name: JBoss Web Server
+    aliases: [JWS, Tomcat]
+    family: app_foundations
+    status: current
+    provides: [app_runtime]
+
+  - id: quarkus
+    name: Red Hat build of Quarkus
+    family: app_foundations
+    status: current
+    provides: [app_runtime]
+    consumes: [cluster]
+
+  - id: camel
+    name: Red Hat build of Apache Camel
+    aliases: [Camel, Fuse]
+    family: app_foundations
+    status: current
+    provides: [app_runtime]
+    notes: Fuse is the older name. Prefer Camel + OpenShift.
+
+  - id: amq
+    name: Red Hat AMQ
+    aliases: [AMQ Broker, AMQ Streams, Kafka]
+    family: app_foundations
+    status: current
+    provides: [messaging]
+    consumes: [cluster]
+
+  - id: datagrid
+    name: Red Hat Data Grid
+    aliases: [Infinispan]
+    family: app_foundations
+    status: current
+    consumes: [cluster]
+
+  - id: 3scale
+    name: Red Hat 3scale API Management
+    aliases: [3scale]
+    family: app_foundations
+    status: current
+    provides: [api_mgmt]
+    consumes: [cluster, identity_oidc]
+
+  - id: devspaces
+    name: OpenShift Dev Spaces
+    aliases: [Che, Dev Spaces]
+    family: openshift
+    status: current
+    consumes: [cluster]
+
+  # --- Infra (legacy / adjacent) ------------------------------------------
+  - id: rhosp
+    name: Red Hat OpenStack Platform
+    aliases: [OSP, OpenStack]
+    family: infrastructure
+    status: current
+    notes: Separate lab if they still run it. Not part of uncanned-satellite.
+
+  - id: rhv
+    name: Red Hat Virtualization
+    aliases: [RHV, RHEV, oVirt]
+    family: infrastructure
+    status: retired
+    notes: Migration path is MTV → OpenShift Virtualization, not Satellite content views.
+
+# ===========================================================================
+# Integrations — directed edges. day = when you wire it in an Uncanned lab.
+# ===========================================================================
+integrations:
+
+  - id: rhel-registers-to-satellite
+    from: rhel
+    to: satellite
+    capability: os_content
+    protocol: RHSM / subscription-manager
+    day: 1
+    show: katello-ca-consumer RPM, activation key, content view Library or named CV
+    anti_pattern: Register workloads in Terraform user-data (kills the live path)
+
+  - id: satellite-consumes-idm-ldap
+    from: satellite
+    to: idm
+    capability: identity_ldap
+    protocol: LDAP 389 (lab) or LDAPS 636
+    day: 1
+    show: Auth source FreeIPA; onthefly-register; soeuser appears after login; Viewer via usergroup
+    anti_pattern: Expect Administer → Users to list the directory. Expect Kerberos SSO. Log in as IdM admin.
+    notes: setsebool nis_enabled; hosts entry for idm.demo.local
+
+  - id: aap-binds-idm
+    from: aap
+    to: idm
+    capability: identity_ldap
+    protocol: LDAP
+    day: 1
+    show: Enterprise auth on controller; same soeuser as Satellite if both labs share IdM
+    owned_by: whichever lab has the IdM VM (today uncanned-satellite)
+
+  - id: aap-inventory-from-satellite
+    from: aap
+    to: satellite
+    capability: automation
+    protocol: Satellite inventory plugin / Hammer API
+    day: 2
+    show: Hosts Satellite knows become AAP inventory; groups from host collections / LCE
+    anti_pattern: Static INI of public IPs that die after stop/start
+
+  - id: aap-jobs-patch-via-satellite
+    from: aap
+    to: satellite
+    capability: os_content
+    protocol: Job templates + dnf/yum against Satellite repos
+    day: 2
+    show: Patch a registered host using content the CV already has
+
+  - id: aap-provision-callback-satellite
+    from: satellite
+    to: aap
+    capability: automation
+    protocol: Provisioning callback
+    day: 2
+    show: Freshly provisioned host runs a playbook without someone clicking Run
+
+  - id: aap-pulls-from-private-hub
+    from: aap
+    to: aap
+    capability: automation
+    protocol: Automation Hub / Galaxy API
+    day: 1
+    show: Collections from the hub they control, not galaxy.redhat.com only
+    notes: Hub is a separate VM in uncanned-aap
+
+  - id: aap-runs-on-openshift
+    from: aap
+    to: openshift
+    capability: cluster
+    protocol: AAP Operator + kube API
+    day: 1
+    show: Controller/hub as Operators, or jobs that create OpenShift resources
+    anti_pattern: Install RPM AAP and Operator AAP in the same lab without saying which story it is
+
+  - id: aap-ee-from-quay
+    from: aap
+    to: quay
+    capability: container_registry
+    protocol: EE image pull
+    day: 2
+    show: Execution environment they built, not the default EE only
+
+  - id: ocp-nodes-from-rhcos
+    from: openshift
+    to: rhcos
+    capability: os_content
+    protocol: MachineConfig / boot image
+    day: 1
+    notes: Not Satellite-registered RHEL workers unless they chose RHEL workers (supported, different story)
+
+  - id: ocp-rhel-workers-from-satellite
+    from: openshift
+    to: satellite
+    capability: os_content
+    protocol: RHEL worker subscription + Satellite
+    day: 2
+    show: If they insist workers are RHEL SOE, Satellite CV feeds the workers — uncommon in a first OpenShift demo
+
+  - id: ocp-disconnected-content
+    from: openshift
+    to: satellite
+    capability: sneakernet
+    protocol: oc-mirror + staging NFS/HTTP; optionally Satellite for RHEL RPMs
+    day: 1
+    show: Release payload and operators on the USB-stick box; Satellite for RHEL, not a full OCP substitute
+    anti_pattern: 'Do not claim Satellite syncs OpenShift like BaseOS. Disconnected OCP is oc-mirror first.'
+
+  - id: ocp-pulls-from-quay
+    from: openshift
+    to: quay
+    capability: container_registry
+    protocol: ImageContentSourcePolicy / IDMS + pull
+    day: 1
+    show: Disconnected cluster pulls from their registry
+
+  - id: acm-manages-openshift
+    from: acm
+    to: openshift
+    capability: cluster_fleet
+    protocol: Klusterlet / hive import
+    day: 2
+    show: Spoke SNO or compact imported; policy on the spoke
+
+  - id: acm-ansible-integration
+    from: acm
+    to: aap
+    capability: automation
+    protocol: Ansible Automation Platform as ACM automation
+    day: 2
+    show: Policy violation fires an AAP job
+
+  - id: acs-watches-openshift
+    from: acs
+    to: openshift
+    capability: security_scan
+    protocol: Secured cluster / sensor
+    day: 2
+    show: Deploy a bad image, ACS blocks or alerts
+
+  - id: quay-federates-keycloak
+    from: quay
+    to: keycloak
+    capability: identity_oidc
+    day: 2
+
+  - id: openshift-oidc-keycloak
+    from: openshift
+    to: keycloak
+    capability: identity_oidc
+    protocol: OIDC identity provider
+    day: 1
+    show: oc login as a person, not kubeadmin. Keycloak can federate IdM.
+
+  - id: openshift-ldap-idm
+    from: openshift
+    to: idm
+    capability: identity_ldap
+    protocol: LDAP identity provider
+    day: 1
+    notes: Works; OIDC via Keycloak is cleaner if they already have SSO.
+
+  - id: odf-on-compact
+    from: odf
+    to: openshift
+    capability: persistent_storage
+    protocol: ODF operator on compact-3
+    day: 1
+    show: PVC bound without an external SAN
+
+  - id: gitops-deploys-to-openshift
+    from: oc-gitops
+    to: openshift
+    capability: gitops
+    day: 2
+
+  - id: pipelines-push-quay
+    from: oc-pipelines
+    to: quay
+    capability: container_registry
+    day: 2
+
+  - id: image-builder-pushes-to-quay
+    from: image-builder
+    to: quay
+    capability: image_build
+    day: 2
+
+  - id: image-builder-from-satellite-content
+    from: image-builder
+    to: satellite
+    capability: os_content
+    day: 2
+    show: Image built from the same CV the SOE hosts use
+
+  - id: insights-from-satellite-inventory
+    from: insights
+    to: satellite
+    capability: security_scan
+    protocol: Inventory upload
+    day: 2
+    notes: Skip in true air-gap.
+
+  - id: rhoai-on-openshift
+    from: rhoai
+    to: openshift
+    capability: ai_ml
+    day: 1
+    notes: Needs GPUs or a honest CPU-only disclaimer.
+
+  - id: eap-operator-on-openshift
+    from: eap
+    to: openshift
+    capability: app_runtime
+    protocol: EAP Operator
+    day: 1
+    show: Same Java app they ran on metal, as a Deployment or Operator-managed
+
+  - id: mta-targets-openshift
+    from: mta
+    to: openshift
+    capability: cluster
+    day: 1
+    show: Report of what must change before the app is a container. Then replatform.
+
+  - id: mtc-between-clusters
+    from: mtc
+    to: openshift
+    capability: cluster
+    day: 2
+    show: Namespace + PVC from cluster A to B (SNO → compact, or 3.x → 4.x)
+
+  - id: mtv-to-ocpv
+    from: mtv
+    to: openshift-virtualization
+    capability: vm_on_k8s
+    day: 1
+    notes: Do not use for "we containerized the app."
+
+  - id: podman-generate-kube-to-openshift
+    from: rhel
+    to: openshift
+    capability: cluster
+    protocol: podman kube generate → oc apply
+    day: 1
+    show: Workload that ran as Podman/Quadlet on one RHEL box is now a pod. Then contrast Operators.
+    anti_pattern: Call a Deployment an Operator. Call Quadlet an Operator.
+
+  - id: satellite-disconnected-via-staging
+    from: satellite
+    to: satellite
+    capability: sneakernet
+    protocol: NFS / HTTP :8080 on staging VM
+    day: 1
+    show: hammer content-export on connected, copy timestamped dir, content-import on air-gap
+    anti_pattern: S3 bucket as the sneakernet
+    owned_by: uncanned-satellite
+
+  - id: idm-clients-on-rhel
+    from: rhel
+    to: idm
+    capability: identity_kerberos
+    protocol: ipa-client-install
+    day: 2
+    notes: Uncanned Satellite uses LDAP to Satellite first. IPA client on workloads is optional polish.
+
+# ===========================================================================
+# Operator vs Podman (so agents do not mash the two)
+# ===========================================================================
+operator_vs_podman:
+  podman:
+    runs_on: a single RHEL host
+    unit: container or pod
+    lifecycle: you (or systemd/Quadlet)
+    path_to_openshift: podman kube generate
+  operator:
+    runs_on: OpenShift/Kubernetes
+    unit: Custom Resource + controller
+    lifecycle: reconcile loop (install, upgrade, backup, heal — capability levels 1–5)
+    not: a Pod YAML with a fancier name
+  capability_levels:
+    1: Basic install
+    2: Seamless upgrades
+    3: Full lifecycle (backup/restore/failover)
+    4: Deep insights
+    5: Autopilot
+  demo_rule: If they run it with podman today, generate kube first. Offer an Operator only if day-2 is the point of the meeting.

@@ -1,0 +1,193 @@
+# Uncanned composition rules — how an agent builds a demo from the portfolio.
+# Load with portfolio.yaml. Do not install products from this file.
+
+id: redhat.uncanned.composition
+version: "0.1.0"
+consumes: ./portfolio.yaml
+
+# ---------------------------------------------------------------------------
+# How to use this (agents)
+# ---------------------------------------------------------------------------
+# A recipe is a catalog card. It is not terraform apply.
+# status: runnable = a lab repo + README exists. proposed = idea only; do not tell a newcomer to build it this afternoon.
+recipe_status:
+  runnable: Lab repo exists. Clone siblings, follow that lab README. Still need AWS + entitlements.
+  proposed: YAML only. Adding a recipe does not create machines or installers.
+
+how_to_grow_the_catalog:
+  add_a_card: Append a recipe with status proposed. Point at product and integration ids. Stop.
+  make_it_runnable: New uncanned-<product> repo (or extra VM in an existing lab). Compose uncanned-modules. Installer in that lab README. Then set status runnable.
+  never: Treat composition.yaml as a catalog appliance. Do not generate a mega-repo from several recipes.
+
+agent_contract:
+  foundation:
+    every_recipe_starts_with: >
+      EC2 RHEL via rhel_vm + rhel_ami. The product host is always a machine you own in the
+      account — never an AWS managed service (ROSA, RDS, EKS, ElastiCache, Amazon MQ, etc.)
+      as a substitute for Satellite, AAP, IdM, Quay, or the workload.
+    pick_rhel_major: >
+      Read host.rhel_majors (and host.not_yet) on each product in portfolio.yaml before
+      choosing an AMI. Default kit is RHEL 9 Access2; do not invent RHEL 10 for a product
+      that does not list 10 yet.
+    pick_install_model: >
+      Read install_model on the product. Prefer the preferred path for new labs
+      (e.g. AAP containerized on RHEL, not RPM).
+  before_any_lab:
+    - Read this file and portfolio.yaml.
+    - Identify the customer constraint in English (air-gap, identity, version, hub they control).
+    - Select the smallest set of product ids that prove that constraint.
+    - Prefer a recipe with status runnable. If none fits, add a proposed recipe, then ask before creating a new lab.
+    - Map each product to an existing uncanned-* lab, or propose a new lab repo — never fork Satellite to delete half of it.
+    - Split work into day0 (machines), day1 (installer in that lab's README), day2 (polish later).
+  never:
+    - Host a Red Hat product on an AWS managed service instead of an EC2 RHEL VM.
+    - Pick a RHEL major the product does not list under host.rhel_majors (check host.not_yet).
+    - Mix day0/day1/day2 in one script or in cloud-init.
+    - Copy VPCs or product disks between labs.
+    - Put satellite-installer, ipa-server-install, AAP installer, or openshift-install in Terraform.
+    - Freeze a product version in a repo name or in user-data. Pin versions in the lab README.
+    - Invent IPs. Read outputs.json after apply.
+    - Commit .env, tfvars, pem, manifests, or Directory Manager / Foreman secrets.
+    - Use S3 as sneakernet. Staging NFS/HTTP is the USB-stick analog.
+    - Assume IdM users appear in Satellite without an LDAP auth source and a first login.
+    - Treat MTV/MTC/MTA as interchangeable: MTV=VMs, MTC=OpenShift namespaces, MTA=application code.
+
+day_jobs:
+  day0:
+    name: Machines
+    owner: terraform composing uncanned-modules
+    result: Empty RHEL EC2 boxes you can SSH to — never a managed-service endpoint
+    allowed: [network, sg, rhel_vm, rhel_ami, staging, hostname, disks, firewall ports, env files]
+    not: [ROSA, RDS, EKS, ElastiCache, Amazon MQ, or other AWS managed product hosts]
+  day1:
+    name: Software
+    owner: each lab's README.md
+    result: Product installed the way a customer would
+    allowed: [register RHSM, official installer, manifest, repos, LDAP bind, AAP inventory, oc-mirror]
+  day2:
+    name: Polish
+    owner: Ansible / later
+    result: Looks like their company
+    allowed: [host groups, compute resources, job templates, pipelines, ACS policies]
+    not_this_week: stuff into bash
+
+# ---------------------------------------------------------------------------
+# Which git repo owns which product
+# ---------------------------------------------------------------------------
+labs:
+  - id: uncanned-modules
+    path: ../../uncanned-modules
+    owns: [machines]
+    not: [any product installer]
+  - id: uncanned-satellite
+    status: runnable
+    path: ../../uncanned-satellite
+    proves: Dual-VPC Satellite + sneakernet + IdM + RPM/Kickstart content views
+    products: [satellite, idm, rhel]
+    day1_in: README.md
+  - id: uncanned-aap
+    status: runnable
+    path: ../../uncanned-aap
+    proves: Controller + private hub + a client
+    products: [aap, rhel]
+    day1_in: README.md
+  - id: uncanned-openshift
+    status: proposed
+    would_prove: Compact or SNO OpenShift, version they run, not a managed-cluster tour
+    products: [openshift, quay]
+    note: New small repo. Same modules. Do not fork uncanned-satellite.
+
+# ---------------------------------------------------------------------------
+# Recipes — pick one, then add integrations as extra VMs or extra labs
+# ---------------------------------------------------------------------------
+recipes:
+  - id: satellite-soe
+    status: runnable
+    title: Connected + air-gapped Satellite with IdM
+    labs: [uncanned-satellite]
+    products: [rhel, satellite, idm]
+    integrations: [satellite-consumes-idm-ldap, rhel-registers-to-satellite, satellite-disconnected-via-staging]
+    day0: Dual VPC, bastion, staging NFS, IdM EC2, two Satellite EC2s (RHEL 9), unregistered workloads
+    day1: ipa-server-install; satellite-installer both sides; manifest; repos; CV; LDAP so soeuser logs in
+    live_path: Register a workload; log in as soeuser; talk sneakernet — do not sync repos in the room
+
+  - id: aap-hub
+    status: runnable
+    title: AAP with a hub they control
+    labs: [uncanned-aap]
+    products: [rhel, aap]
+    integrations: [aap-pulls-from-private-hub]
+    day0: Connected VPC, bastion, controller, hub, workload — all EC2 RHEL
+    day1: Containerized AAP installer for the version they run (see aap.install_model)
+    live_path: Run a job against the client; show collections from their hub
+
+  - id: satellite-plus-aap
+    status: proposed
+    title: Satellite content + AAP automation (two labs, one story)
+    labs: [uncanned-satellite, uncanned-aap]
+    missing: Joint README for inventory plugin / callback. Both labs exist; the wiring is not written down.
+    products: [rhel, satellite, idm, aap]
+    integrations:
+      - satellite-consumes-idm-ldap
+      - rhel-registers-to-satellite
+      - aap-inventory-from-satellite
+      - aap-jobs-patch-via-satellite
+    rule: Do not merge the two product installers. Compose machines in each lab; wire inventory in README (day1/day2).
+    day2: Satellite dynamic inventory, callback, patch job template
+
+  - id: rhel-image-mode
+    status: proposed
+    title: Bootc image they can actually boot
+    labs: []
+    products: [rhel, image-builder, quay]
+    integrations: [image-builder-pushes-to-quay]
+    anti_pattern: Screenshot of a golden image is not a demo
+
+  - id: openshift-compact
+    status: proposed
+    title: Small OpenShift they run this quarter
+    labs: [uncanned-openshift]
+    products: [openshift, odf]
+    topology: compact-3 or sno — see portfolio topologies
+    day1: Real installer / assisted installer; pin OCP version in README
+    not: MTV unless the meeting is VMs
+
+  - id: disconnected-openshift
+    status: proposed
+    title: Air-gapped OpenShift content via sneakernet
+    labs: [uncanned-satellite, uncanned-openshift]
+    products: [satellite, openshift]
+    integrations: [ocp-disconnected-content, satellite-disconnected-via-staging]
+    note: oc-mirror + staging NFS/HTTP is the usual sneakernet. Do not assume Satellite mirrors the full OCP payload the way it mirrors RHEL RPMs.
+
+  - id: acm-fleet
+    status: proposed
+    title: Many clusters, one policy plane
+    labs: [uncanned-openshift]
+    products: [acm, openshift, aap]
+    integrations: [acm-manages-openshift, acm-ansible-integration]
+    day2: Policy, app lifecycle — not day0
+
+  - id: operators-not-podman
+    status: proposed
+    title: Day-2 lifecycle vs a Podman pod on one box
+    labs: []
+    products: [openshift, rhel]
+    integrations: [podman-generate-kube-to-openshift]
+    talk_track: >
+      Podman (or Quadlet/systemd) runs the container on one host.
+      An Operator is software that keeps the app installed, upgraded, and healed on the cluster.
+      Start with podman kube generate; graduate to an Operator when day-2 is the pain.
+
+# ---------------------------------------------------------------------------
+# Decision tree (English)
+# ---------------------------------------------------------------------------
+when_to_use:
+  catalog: Normal product walkthrough, version in the catalog is close enough, need it this afternoon
+  uncanned: Their wiring, their version, identity that is not admin, hub they control, air-gap, or two sites
+  sno: Full OpenShift APIs, no node HA, tiny site
+  compact-3: HA in three boxes, control plane also runs workloads
+  sno_then_worker: Start on one box, add a worker later — do not live-migrate pods as a product feature; use MTC if already on OpenShift
+  mta: Application source/binaries need to become container-suitable
+  mtc: Already an OpenShift namespace, moving clusters
+  mtv: Virtual machines onto OpenShift Virtualization — different meeting
