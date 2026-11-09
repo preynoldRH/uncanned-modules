@@ -107,6 +107,12 @@ products:
     day1: satellite-installer; manifest; repository-set enable; content-view; LDAP auth source
     day2: Host groups, compute resource, image builder, capsules
     uncanned_lab: [uncanned-satellite]
+    hammer_notes: >
+      On 6.19, hammer --output csv is global (not a subcommand flag).
+      repository list has no --enabled; sync repos created by repository-set enable, or product synchronize.
+      Soft-fail Client/Utils sets when the Employee SKU manifest lacks those products.
+      activation-key create: --unlimited-hosts is a bare flag; no --auto-attach.
+      RHSM activation keys (subscription-manager) are not Satellite activation keys (ak-rhel9).
     notes: >
       Users from IdM do not appear until LDAP auth source exists and they log in once.
       Do not log into Satellite as IdM admin (second admin account).
@@ -224,6 +230,8 @@ products:
     notes: >
       New uncanned AAP labs use the containerized installer on EC2 RHEL.
       Do not default to the RPM installer. Operator-on-OpenShift is a separate recipe/story.
+      Day0 SGs must allow VPC→controller 5432/6379 and VPC→hub 8444/8081 (hub TLS is not 443).
+      Installer runs as non-root user; see docs/day1-scripting.md.
 
   - id: ansible-lightspeed
     name: Ansible Lightspeed

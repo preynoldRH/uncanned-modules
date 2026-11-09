@@ -13,6 +13,7 @@ Before you add a node, a lab, or an integration:
 3. Do not invent an integration that is not in the graph. If the customer needs a new edge, add it to `portfolio.yaml` first, then wire it.
 4. A new recipe is `status: proposed` until a lab README can actually run it. Do not tell a newcomer a proposed recipe is out of the box.
 5. Every recipe’s day0 is **EC2 RHEL** (`rhel_vm`), never an AWS managed service as the product host. Which RHEL major and which install model belong on the product in `portfolio.yaml` (`host`, `install_model`) — enforce them from there, do not hard-code versions only in this file.
+6. If you will script Day 1 (RHSM activation key, Satellite manifest/repos, AAP containerized bundle), read **`docs/day1-scripting.md` first**. Workspace-local runners outside `uncanned-*` are fine and usually **not** committed; durable gotchas (hammer flags, AAP hub port **8444**, installer user permissions, SG ports) live in that doc and in Terraform SGs — not in a disposable `day1/` folder.
 
 This ontology is not an installer and not a SKU list. Growing `composition.yaml` is how you grow *your* catalog of stories. It is not a click-to-deploy catalog.
 
@@ -20,12 +21,18 @@ This ontology is not an installer and not a SKU list. Growing `composition.yaml`
 
 Reusable Terraform: network, security groups, RHEL EC2 VMs, optional sneakernet staging. After apply, boxes are empty Linux.
 
+## Day 1 scripting (agents)
+
+`docs/day1-scripting.md` is required reading before automating installs across these labs. Encode port/permission rules in lab Terraform and that doc so a clean clone (no local `day1/` runner) still builds correctly. Recipe `satellite-plus-aap` also points at `docs/satellite-plus-aap.md` for Day 2 wiring and `docs/day2-scripting.md` for register → APD/product-demos → inventory → patch. AAP must have a subscription (`license_info`) before inventory or job launches.
+
 ## Do not
 
 - Run `satellite-installer`, `ipa-server-install`, AAP installer, or `openshift-install` from cloud-init.
 - Add Satellite pulp/pgsql assumptions to `rhel_vm`. Extra disks are generic; mounts are the lab’s user-data.
 - Copy this whole repo into an AAP lab. Labs consume modules; they don’t fork them.
 - Substitute ROSA / RDS / EKS / other managed services for product hosts. Uncanned turns on EC2 RHEL.
+- Assume hammer `repository list --enabled` or that `--output` is a subcommand flag (Satellite 6.19: `--output` is global).
+- Open only 443 to the AAP hub — containerized hub TLS is often **8444**; controller also needs VPC→5432/6379.
 
 ## Verify
 

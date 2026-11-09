@@ -39,6 +39,7 @@ agent_contract:
     - Prefer a recipe with status runnable. If none fits, add a proposed recipe, then ask before creating a new lab.
     - Map each product to an existing uncanned-* lab, or propose a new lab repo — never fork Satellite to delete half of it.
     - Split work into day0 (machines), day1 (installer in that lab's README), day2 (polish later).
+    - If scripting Day 1 (activation key, manifest, AAP bundle, hammer, containerized installer), read docs/day1-scripting.md first — SG ports, hosts files, hammer flags, and aap-user permissions are required, not optional polish.
   never:
     - Host a Red Hat product on an AWS managed service instead of an EC2 RHEL VM.
     - Pick a RHEL major the product does not list under host.rhel_majors (check host.not_yet).
@@ -51,6 +52,9 @@ agent_contract:
     - Use S3 as sneakernet. Staging NFS/HTTP is the USB-stick analog.
     - Assume IdM users appear in Satellite without an LDAP auth source and a first login.
     - Treat MTV/MTC/MTA as interchangeable: MTV=VMs, MTC=OpenShift namespaces, MTA=application code.
+    - Assume hammer repository list accepts --enabled, or that --output is a subcommand flag (it is global on 6.19).
+    - Open only 443 to the AAP hub and expect gateway/galaxy to work (containerized hub TLS is often 8444).
+    - Run the AAP containerized installer as ec2-user inside /home/aap (home is mode 700).
 
 day_jobs:
   day0:
@@ -64,6 +68,11 @@ day_jobs:
     owner: each lab's README.md
     result: Product installed the way a customer would
     allowed: [register RHSM, official installer, manifest, repos, LDAP bind, AAP inventory, oc-mirror]
+    scripting_gotchas: ./docs/day1-scripting.md
+    note: >
+      A workspace-local runner outside uncanned-* is fine for demos (activation key + manifest +
+      AAP bundle). Do not commit that runner into these labs. Encode durable rules in day1-scripting.md
+      and in Terraform security groups so the next agent rebuilds correctly.
   day2:
     name: Polish
     owner: Ansible / later
@@ -85,13 +94,14 @@ labs:
     proves: Connected Satellite SOE with IdM; optional second VPC + staging for disconnected twin
     products: [satellite, idm, rhel]
     day1_in: README.md
-    recipes: [satellite-soe-connected, satellite-soe-disconnected-twin]
+    recipes: [satellite-soe-connected, satellite-soe-disconnected-twin, satellite-plus-aap]
   - id: uncanned-aap
     status: runnable
     path: ../../uncanned-aap
-    proves: Controller + private hub + a client
+    proves: Controller + private hub + a client; pairs with connected SOE for satellite-plus-aap
     products: [aap, rhel]
     day1_in: README.md
+    recipes: [aap-hub, satellite-plus-aap]
   - id: uncanned-openshift
     status: proposed
     would_prove: Compact or SNO OpenShift, version they run, not a managed-cluster tour
@@ -140,19 +150,28 @@ recipes:
     live_path: Run a job against the client; show collections from their hub
 
   - id: satellite-plus-aap
-    status: proposed
+    status: runnable
     title: Satellite content + AAP automation (two labs, one story)
     labs: [uncanned-satellite, uncanned-aap]
     builds_on: satellite-soe-connected
-    missing: Joint README for inventory plugin / callback. Both labs exist; the wiring is not written down.
+    day0: Connected SOE (enable_airgap=false) + uncanned-aap VPC; separate applies, no mega-repo
+    day1: Installers stay in each lab README (IdM/Satellite; containerized AAP)
+    day1_scripting: ../../uncanned-modules/docs/day1-scripting.md
+    day2_in: ../../uncanned-modules/docs/satellite-plus-aap.md
+    day2_scripting: ../../uncanned-modules/docs/day2-scripting.md
     products: [rhel, satellite, idm, aap]
+    day2_notes: >
+      License AAP before inventory sync or job launches (empty license_info blocks Day 2).
+      Prefer ansible/product-demos (install-apd.yml + linux/satellite setup) for templates.
+      Cross-VPC: set ansible_host to workload public IPs from Satellite outputs.json.
     integrations:
       - satellite-consumes-idm-ldap
       - rhel-registers-to-satellite
       - aap-inventory-from-satellite
       - aap-jobs-patch-via-satellite
-    rule: Do not merge the two product installers. Compose machines in each lab; wire inventory in README (day1/day2).
-    day2: Satellite dynamic inventory, callback, patch job template
+    rule: Do not merge the two product installers. Compose machines in each lab; wire inventory in the joint doc (day2).
+    day2: Satellite dynamic inventory, optional callback, patch job template
+    live_path: Register a workload; sync Satellite inventory into AAP; run a patch job against the CV
     note: Start from the connected SOE, not the disconnected twin, unless the meeting is air-gap automation.
 
   - id: rhel-image-mode

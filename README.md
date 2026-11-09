@@ -7,7 +7,7 @@ Shared **machines-only** Terraform for custom Red Hat demos. These modules turn 
 This is not the catalog. It is a kit. You still need a blank AWS Open Environment, RHEL 9 Access2 AMIs, Red Hat entitlements, and the product installer for the **version** you want to show.
 
 1. Clone the three repos **next to each other** (see below).
-2. Open the lab for a **runnable** recipe — today that is `satellite-soe-connected` or `satellite-soe-disconnected-twin` (`uncanned-satellite`), or `aap-hub` (`uncanned-aap`). Check `ontology/composition.yaml` for `status: runnable`.
+2. Open the lab for a **runnable** recipe — `satellite-soe-connected` (default; `enable_airgap=false`), `satellite-soe-disconnected-twin`, `aap-hub`, or `satellite-plus-aap` (connected SOE + AAP wiring in `docs/satellite-plus-aap.md`). Check `ontology/composition.yaml` for `status: runnable`.
 3. Copy that lab’s `terraform.tfvars.example`, make an SSH key, `terraform apply`, then install from **that lab’s README**. After apply the boxes are empty on purpose.
 4. A recipe with `status: proposed` is a catalog card only. Adding YAML does not create Terraform or an installer.
 
@@ -73,6 +73,8 @@ Pin `ref` to a tag in real use. Do not use git submodules.
 ## Ontology
 
 `ontology/` is the Red Hat portfolio graph for AI assistants that build Uncanned labs: products, integrations, and which git repo owns the installer. Humans still install from each lab’s README. Terraform still only turns computers on.
+
+Day 1 scripting lessons (activation keys, hammer, AAP bundle/user/SGs) live in [`docs/day1-scripting.md`](docs/day1-scripting.md) — required reading before automating installs so a clean clone without a local runner still builds correctly. Recipe wiring for connected SOE + AAP: [`docs/satellite-plus-aap.md`](docs/satellite-plus-aap.md).
 
 ## Rules
 
